@@ -37,6 +37,7 @@ static uint8_t prev_fb[EPD_BYTES];
 static const uint8_t ZERO = 0x00;
 static int dma_ch;
 static bool asleep = false;
+static int rot = 0;
 
 static inline void cs_lo(void)   { gpio_put(EPD_PIN_CS, 0); }
 static inline void cs_hi(void)   { gpio_put(EPD_PIN_CS, 1); }
@@ -227,3 +228,8 @@ void epd_refresh_partial(void) {
     epd_refresh_partial_async();
     wait_busy();
 }
+
+void epd_set_rotation(int r) { rot = r & 3; }
+int  epd_rotation(void) { return rot; }
+int  epd_width(void)  { return (rot & 1) ? EPD_H : EPD_W; }
+int  epd_height(void) { return (rot & 1) ? EPD_W : EPD_H; }

@@ -18,6 +18,7 @@ src/                 ← the drop-in library
 examples/
   demo/               splash + partial ticker + deep-sleep cycle
   tetris/             playable tetris driven by 8 GPIO keys
+  rot/                cycles all four rotations
 ```
 
 To use the driver in your own project, copy `src/` and edit `epd_config.h` for your pin map.
@@ -73,6 +74,11 @@ void     epd_refresh_full_async(void);    // kick off, return when DMA + activat
 void     epd_refresh_partial_async(void); // same, ~25 ms before returning
 bool     epd_busy(void);              // panel still rendering?
 void     epd_wait(void);              // block until panel idle
+
+void     epd_set_rotation(int rot);   // 0/1/2/3 = 0° / 90° CW / 180° / 270° CW
+int      epd_rotation(void);
+int      epd_width(void);             // logical width  (400 or 300 depending on rotation)
+int      epd_height(void);            // logical height (300 or 400)
 ```
 
 The framebuffer is one contiguous 15000-byte block, 1 bit per pixel, MSB = leftmost pixel, **1 = white, 0 = black** (matches the SSD1683 RAM polarity).

@@ -5,15 +5,24 @@
 
 static inline int abs_i(int v) { return v < 0 ? -v : v; }
 
-void gfx_pixel(int x, int y, bool black) {
-    if ((unsigned)x >= EPD_W || (unsigned)y >= EPD_H) return;
-    uint8_t *p = epd_fb() + y * EPD_PITCH + (x >> 3);
-    uint8_t mask = 0x80 >> (x & 7);
+static inline void rot_to_phys(int lx, int ly, int *px, int *py) {
+    switch (epd_rotation()) {
+        case 0: *px = lx;             *py = ly;             break;
+        case 1: *px = EPD_W - 1 - ly; *py = lx;             break;
+        case 2: *px = EPD_W - 1 - lx; *py = EPD_H - 1 - ly; break;
+        default: *px = ly;            *py = EPD_H - 1 - lx; break;
+    }
+}
+
+static inline void phys_pixel(int px, int py, bool black) {
+    if ((unsigned)px >= EPD_W || (unsigned)py >= EPD_H) return;
+    uint8_t *p = epd_fb() + py * EPD_PITCH + (px >> 3);
+    uint8_t mask = 0x80 >> (px & 7);
     if (black) *p &= (uint8_t)~mask;
     else       *p |= mask;
 }
 
-void gfx_hline(int x, int y, int w, bool black) {
+static void phys_hline(int x, int y, int w, bool black) {
     if ((unsigned)y >= EPD_H || w <= 0) return;
     if (x < 0) { w += x; x = 0; }
     if (x + w > EPD_W) w = EPD_W - x;
@@ -21,8 +30,7 @@ void gfx_hline(int x, int y, int w, bool black) {
 
     uint8_t *row = epd_fb() + y * EPD_PITCH;
     int x1 = x + w - 1;
-    int b0 = x >> 3;
-    int b1 = x1 >> 3;
+    int b0 = x >> 3, b1 = x1 >> 3;
     uint8_t lm = (uint8_t)(0xFF >> (x & 7));
     uint8_t rm = (uint8_t)(0xFF << (7 - (x1 & 7)));
 
@@ -43,16 +51,40 @@ void gfx_hline(int x, int y, int w, bool black) {
     }
 }
 
-void gfx_vline(int x, int y, int h, bool black) {
-    if ((unsigned)x >= EPD_W || h <= 0) return;
+static void phys_fill_rect(int x, int y, int w, int h, bool black) {
+    if (w <= 0 || h <= 0) return;
+    if (x < 0) { w += x; x = 0; }
     if (y < 0) { h += y; y = 0; }
+    if (x + w > EPD_W) w = EPD_W - x;
     if (y + h > EPD_H) h = EPD_H - y;
-    if (h <= 0) return;
+    if (w <= 0 || h <= 0) return;
+    for (int i = 0; i < h; i++) phys_hline(x, y + i, w, black);
+}
 
-    uint8_t mask = 0x80 >> (x & 7);
-    uint8_t *p = epd_fb() + y * EPD_PITCH + (x >> 3);
-    if (black) for (int i = 0; i < h; i++, p += EPD_PITCH) *p &= (uint8_t)~mask;
-    else       for (int i = 0; i < h; i++, p += EPD_PITCH) *p |= mask;
+void gfx_pixel(int x, int y, bool black) {
+    int px, py;
+    rot_to_phys(x, y, &px, &py);
+    phys_pixel(px, py, black);
+}
+
+void gfx_fill_rect(int x, int y, int w, int h, bool black) {
+    if (w <= 0 || h <= 0) return;
+    int ax, ay, bx, by;
+    rot_to_phys(x, y, &ax, &ay);
+    rot_to_phys(x + w - 1, y + h - 1, &bx, &by);
+    int px = ax < bx ? ax : bx;
+    int py = ay < by ? ay : by;
+    int pw = abs_i(bx - ax) + 1;
+    int ph = abs_i(by - ay) + 1;
+    phys_fill_rect(px, py, pw, ph, black);
+}
+
+void gfx_hline(int x, int y, int w, bool black) {
+    gfx_fill_rect(x, y, w, 1, black);
+}
+
+void gfx_vline(int x, int y, int h, bool black) {
+    gfx_fill_rect(x, y, 1, h, black);
 }
 
 void gfx_line(int x0, int y0, int x1, int y1, bool black) {
@@ -75,16 +107,6 @@ void gfx_rect(int x, int y, int w, int h, bool black) {
     gfx_hline(x, y + h - 1, w, black);
     gfx_vline(x, y, h, black);
     gfx_vline(x + w - 1, y, h, black);
-}
-
-void gfx_fill_rect(int x, int y, int w, int h, bool black) {
-    if (w <= 0 || h <= 0) return;
-    if (x < 0) { w += x; x = 0; }
-    if (y < 0) { h += y; y = 0; }
-    if (x + w > EPD_W) w = EPD_W - x;
-    if (y + h > EPD_H) h = EPD_H - y;
-    if (w <= 0 || h <= 0) return;
-    for (int i = 0; i < h; i++) gfx_hline(x, y + i, w, black);
 }
 
 void gfx_circle(int cx, int cy, int r, bool black) {
@@ -118,36 +140,17 @@ void gfx_fill_circle(int cx, int cy, int r, bool black) {
 }
 
 void gfx_char(int x, int y, char c, bool invert) {
-    if (x >= EPD_W || y >= EPD_H || x + GFX_FONT_W <= 0 || y + GFX_FONT_H <= 0) return;
+    int w = epd_width(), h = epd_height();
+    if (x >= w || y >= h || x + GFX_FONT_W <= 0 || y + GFX_FONT_H <= 0) return;
     uint8_t ch = (uint8_t)c;
     if (ch < 0x20 || ch > 0x7F) ch = '?';
     const uint8_t *glyph = &font8x16[(ch - 0x20) * 16];
 
-    if ((x & 7) == 0 && x >= 0 && x + GFX_FONT_W <= EPD_W) {
-        int r0 = y < 0 ? -y : 0;
-        int r1 = (y + GFX_FONT_H > EPD_H) ? (EPD_H - y) : GFX_FONT_H;
-        uint8_t *p = epd_fb() + (y + r0) * EPD_PITCH + (x >> 3);
-        for (int row = r0; row < r1; row++) {
-            uint8_t bits = glyph[row];
-            *p = invert ? bits : (uint8_t)~bits;
-            p += EPD_PITCH;
-        }
-        return;
-    }
-
     for (int row = 0; row < GFX_FONT_H; row++) {
-        int yy = y + row;
-        if ((unsigned)yy >= EPD_H) continue;
         uint8_t bits = glyph[row];
         for (int col = 0; col < GFX_FONT_W; col++) {
-            int xx = x + col;
-            if ((unsigned)xx >= EPD_W) continue;
             bool on = (bits & (0x80 >> col)) != 0;
-            bool black = on ^ invert;
-            uint8_t *p = epd_fb() + yy * EPD_PITCH + (xx >> 3);
-            uint8_t mask = 0x80 >> (xx & 7);
-            if (black) *p &= (uint8_t)~mask;
-            else       *p |= mask;
+            gfx_pixel(x + col, y + row, on ^ invert);
         }
     }
 }

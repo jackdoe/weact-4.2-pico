@@ -26,3 +26,4 @@ target_link_libraries(weact_epd
 
 add_subdirectory(examples/demo)
 add_subdirectory(examples/tetris)
+add_subdirectory(examples/rot)
