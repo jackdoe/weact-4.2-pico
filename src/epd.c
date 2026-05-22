@@ -139,11 +139,10 @@ static void wake_if_needed(void) {
     if (asleep) panel_init();
 }
 
-static void trigger(uint8_t mode) {
+static void trigger_async(uint8_t mode) {
     send_cmd(CMD_DISP_UPDATE_2);
     send_data1(mode);
     send_cmd(CMD_MASTER_ACTIVATE);
-    wait_busy();
 }
 
 void epd_init(void) {
@@ -177,7 +176,16 @@ void epd_clear(bool black) {
     memset(fb, black ? 0x00 : 0xFF, EPD_BYTES);
 }
 
-void epd_refresh_full(void) {
+bool epd_busy(void) {
+    return gpio_get(EPD_PIN_BUSY);
+}
+
+void epd_wait(void) {
+    wait_busy();
+}
+
+void epd_refresh_full_async(void) {
+    wait_busy();
     wake_if_needed();
 
     set_cursor(0, 0);
@@ -188,12 +196,13 @@ void epd_refresh_full(void) {
     send_cmd(CMD_WRITE_RED);
     dma_xfer(&ZERO, EPD_BYTES, false);
 
-    trigger(UPD_FULL);
-
     memcpy(prev_fb, fb, EPD_BYTES);
+
+    trigger_async(UPD_FULL);
 }
 
-void epd_refresh_partial(void) {
+void epd_refresh_partial_async(void) {
+    wait_busy();
     wake_if_needed();
 
     set_cursor(0, 0);
@@ -204,7 +213,17 @@ void epd_refresh_partial(void) {
     send_cmd(CMD_WRITE_RED);
     dma_xfer(prev_fb, EPD_BYTES, true);
 
-    trigger(UPD_PARTIAL);
-
     memcpy(prev_fb, fb, EPD_BYTES);
+
+    trigger_async(UPD_PARTIAL);
+}
+
+void epd_refresh_full(void) {
+    epd_refresh_full_async();
+    wait_busy();
+}
+
+void epd_refresh_partial(void) {
+    epd_refresh_partial_async();
+    wait_busy();
 }

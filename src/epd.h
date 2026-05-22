@@ -17,3 +17,8 @@ void epd_clear(bool black);
 
 void epd_refresh_full(void);
 void epd_refresh_partial(void);
+
+void epd_refresh_full_async(void);
+void epd_refresh_partial_async(void);
+bool epd_busy(void);
+void epd_wait(void);

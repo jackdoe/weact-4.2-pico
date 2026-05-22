@@ -61,12 +61,18 @@ The entire public surface — six functions, four macros — is in `epd.h` and `
 ```
 
 ```c
-void     epd_init(void);          // SPI + DMA + GPIO + panel init
-void     epd_sleep(void);         // deep sleep (~3 µA); next refresh auto-wakes
-uint8_t *epd_fb(void);            // direct framebuffer access (15000 bytes)
-void     epd_clear(bool black);   // memset the framebuffer
-void     epd_refresh_full(void);  // ~2 s, clears ghosting
-void     epd_refresh_partial(void); // ~300 ms, differential against last frame
+void     epd_init(void);              // SPI + DMA + GPIO + panel init
+void     epd_sleep(void);             // deep sleep (~3 µA); next refresh auto-wakes
+uint8_t *epd_fb(void);                // direct framebuffer access (15000 bytes)
+void     epd_clear(bool black);       // memset the framebuffer
+
+void     epd_refresh_full(void);      // ~2 s, clears ghosting (blocking)
+void     epd_refresh_partial(void);   // ~300 ms, differential against last frame (blocking)
+
+void     epd_refresh_full_async(void);    // kick off, return when DMA + activate done (~25 ms)
+void     epd_refresh_partial_async(void); // same, ~25 ms before returning
+bool     epd_busy(void);              // panel still rendering?
+void     epd_wait(void);              // block until panel idle
 ```
 
 The framebuffer is one contiguous 15000-byte block, 1 bit per pixel, MSB = leftmost pixel, **1 = white, 0 = black** (matches the SSD1683 RAM polarity).
@@ -111,6 +117,30 @@ void gfx_text       (int x, int y, const char *s, bool invert);
 Both transfers use one DMA channel streaming straight into the SPI TX FIFO — the 15 KB frame is on the bus in ~12 ms at 20 MHz; the rest of the refresh time is the panel waveform, waited on the `BUSY` pin.
 
 For long-running partial-update sessions (e.g. the Tetris example), schedule an occasional `epd_refresh_full()` — every 30–50 partials is a reasonable rhythm — to clear accumulated waveform drift.
+
+### Async refresh
+
+The panel takes ~300 ms to actually draw a partial frame and ~2 s for a full one — most of which is the controller running the waveform with the SPI bus idle. The async API splits this:
+
+1. `epd_refresh_*_async()` waits for any prior refresh to finish, streams the framebuffer over DMA, fires `MASTER_ACTIVATE`, and returns (~25 ms total — almost all of it the DMA transfer).
+2. The panel keeps drawing in the background while your main loop runs.
+3. Call `epd_busy()` before the next refresh; only kick off a new one when it returns false.
+
+```c
+bool dirty = true;
+while (1) {
+    poll_input();          // runs every loop, regardless of panel state
+    update_game_state();
+    if (dirty && !epd_busy()) {
+        render_to_fb();
+        epd_refresh_partial_async();
+        dirty = false;
+    }
+    sleep_ms(2);
+}
+```
+
+Multiple state changes during a refresh coalesce — the next render captures the latest state, not every intermediate one. Input latency drops from one full refresh (~300 ms) to one DMA transfer (~25 ms).
 
 ## Credits
 

@@ -249,12 +249,12 @@ static void render(void) {
     }
 }
 
-static void smart_refresh(void) {
+static void smart_refresh_async(void) {
     if (partials_since_full >= 40) {
-        epd_refresh_full();
+        epd_refresh_full_async();
         partials_since_full = 0;
     } else {
-        epd_refresh_partial();
+        epd_refresh_partial_async();
         partials_since_full++;
     }
 }
@@ -290,28 +290,28 @@ static void game_loop(void) {
     partials_since_full = 0;
 
     uint64_t last_tick = time_us_64();
+    bool dirty = false;
 
     while (1) {
         uint8_t e = keys_edges();
-        bool changed = false;
 
-        if (e & (1 << KEY_QUIT)) return;
+        if (e & (1 << KEY_QUIT)) { epd_wait(); return; }
 
         if (e & (1 << KEY_NEW)) {
             reset_game();
             last_tick = time_us_64();
-            changed = true;
+            dirty = true;
         }
 
         if (!game_over) {
-            if (e & (1 << KEY_PAUSE)) { paused = !paused; changed = true; }
+            if (e & (1 << KEY_PAUSE)) { paused = !paused; dirty = true; }
             if (!paused) {
-                if (e & (1 << KEY_LEFT))  changed |= try_move(-1, 0, 0);
-                if (e & (1 << KEY_RIGHT)) changed |= try_move( 1, 0, 0);
+                if (e & (1 << KEY_LEFT))  dirty |= try_move(-1, 0, 0);
+                if (e & (1 << KEY_RIGHT)) dirty |= try_move( 1, 0, 0);
                 if (e & (1 << KEY_DOWN)) {
-                    if (try_move(0, 1, 0)) { score += 1; last_tick = time_us_64(); changed = true; }
+                    if (try_move(0, 1, 0)) { score += 1; last_tick = time_us_64(); dirty = true; }
                 }
-                if (e & (1 << KEY_ROT))   changed |= try_move(0, 0, 1);
+                if (e & (1 << KEY_ROT))   dirty |= try_move(0, 0, 1);
                 if (e & (1 << KEY_DROP)) {
                     hard_drop();
                     lock_piece();
@@ -320,7 +320,7 @@ static void game_loop(void) {
                     spawn();
                     if (collides(piece_type, piece_rot, piece_x, piece_y)) game_over = true;
                     last_tick = time_us_64();
-                    changed = true;
+                    dirty = true;
                 }
             }
         }
@@ -335,15 +335,16 @@ static void game_loop(void) {
                 spawn();
                 if (collides(piece_type, piece_rot, piece_x, piece_y)) game_over = true;
             }
-            changed = true;
+            dirty = true;
         }
 
-        if (changed) {
+        if (dirty && !epd_busy()) {
             render();
-            smart_refresh();
-        } else {
-            sleep_ms(15);
+            smart_refresh_async();
+            dirty = false;
         }
+
+        sleep_ms(2);
     }
 }
 
