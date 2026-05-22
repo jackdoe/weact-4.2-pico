@@ -13,6 +13,12 @@ add_library(weact_epd STATIC
     src/epd.c
     src/gfx.c
     src/font8x16.c
+    src/font_dep_10x21.c
+    src/font_dep_13x26.c
+    src/font_dep_15x31.c
+    src/font_3270_8x16.c
+    src/font_3270_11x23.c
+    src/font_3270_13x27.c
 )
 
 target_include_directories(weact_epd PUBLIC src)
@@ -27,3 +33,4 @@ target_link_libraries(weact_epd
 add_subdirectory(examples/demo)
 add_subdirectory(examples/tetris)
 add_subdirectory(examples/rot)
+add_subdirectory(examples/fonts)

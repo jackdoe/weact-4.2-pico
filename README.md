@@ -19,6 +19,10 @@ examples/
   demo/               splash + partial ticker + deep-sleep cycle
   tetris/             playable tetris driven by 8 GPIO keys
   rot/                cycles all four rotations
+  fonts/              all seven bundled fonts side-by-side
+
+tools/
+  convert_font.py     bake any TTF/OTF into a packed-bitmap C source
 ```
 
 To use the driver in your own project, copy `src/` and edit `epd_config.h` for your pin map.
@@ -98,9 +102,6 @@ After `epd_sleep()`, any subsequent `epd_refresh_*` will hardware-reset and re-i
 All shapes write into the framebuffer; nothing reaches the panel until you call a refresh. `black` selects ink (true = black, false = white). For `gfx_char` / `gfx_text`, `invert = false` means black text on white background.
 
 ```c
-#define GFX_FONT_W 8
-#define GFX_FONT_H 16
-
 void gfx_pixel      (int x, int y, bool black);
 void gfx_hline      (int x, int y, int w, bool black);
 void gfx_vline      (int x, int y, int h, bool black);
@@ -109,11 +110,36 @@ void gfx_rect       (int x, int y, int w, int h, bool black);
 void gfx_fill_rect  (int x, int y, int w, int h, bool black);
 void gfx_circle     (int cx, int cy, int r, bool black);
 void gfx_fill_circle(int cx, int cy, int r, bool black);
-void gfx_char       (int x, int y, char c, bool invert);
-void gfx_text       (int x, int y, const char *s, bool invert);
+
+void gfx_char       (int x, int y, char c, bool invert);                          // default 8x16
+void gfx_text       (int x, int y, const char *s, bool invert);                   // default 8x16
+void gfx_char_f     (int x, int y, char c, bool invert, const gfx_font_t *font);
+void gfx_text_f     (int x, int y, const char *s, bool invert, const gfx_font_t *font);
 ```
 
-`gfx_hline` / `gfx_fill_rect` collapse to `memset` on byte-aligned middle bytes; `gfx_char` has a fast path when `x % 8 == 0` (one byte-write per glyph row). All coordinates are clipped to the panel.
+`gfx_fill_rect` (and its `hline` / `vline` shims) hit byte-aligned `memset` on the middle bytes after transforming to physical coordinates — fast at every rotation. Everything else is per-pixel through `gfx_pixel`. All coordinates are clipped to the panel.
+
+### Fonts
+
+Seven bundled fonts, all monospace, packed as 1-bit bitmaps:
+
+```c
+extern const gfx_font_t gfx_font_8x16;          // built-in default, 1.5 KB
+extern const gfx_font_t gfx_font_dep_10x21;     // Departure Mono @16, ~2 KB
+extern const gfx_font_t gfx_font_dep_13x26;     // Departure Mono @20, ~2.5 KB
+extern const gfx_font_t gfx_font_dep_15x31;     // Departure Mono @24, ~3 KB
+extern const gfx_font_t gfx_font_3270_8x16;     // 3270 Mono @14, ~1.8 KB
+extern const gfx_font_t gfx_font_3270_11x23;    // 3270 Mono @20, ~2.5 KB
+extern const gfx_font_t gfx_font_3270_13x27;    // 3270 Mono @24, ~3 KB
+```
+
+To add your own, point `tools/convert_font.py` at a TTF or OTF:
+
+```sh
+python3 tools/convert_font.py myfont.otf 18 gfx_font_my_18 > src/font_my_18.c
+```
+
+Add the generated file to `add_library(weact_epd ...)` in `CMakeLists.txt`, declare `extern const gfx_font_t gfx_font_my_18;` (or in your code directly), and pass it to `gfx_text_f`.
 
 ## Refresh strategy
 

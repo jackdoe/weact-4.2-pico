@@ -139,28 +139,37 @@ void gfx_fill_circle(int cx, int cy, int r, bool black) {
     }
 }
 
-void gfx_char(int x, int y, char c, bool invert) {
+void gfx_char_f(int x, int y, char c, bool invert, const gfx_font_t *font) {
     int w = epd_width(), h = epd_height();
-    if (x >= w || y >= h || x + GFX_FONT_W <= 0 || y + GFX_FONT_H <= 0) return;
+    if (x >= w || y >= h || x + font->w <= 0 || y + font->h <= 0) return;
     uint8_t ch = (uint8_t)c;
-    if (ch < 0x20 || ch > 0x7F) ch = '?';
-    const uint8_t *glyph = &font8x16[(ch - 0x20) * 16];
+    if (ch < font->first || ch > font->last) ch = '?';
+    int stride = (font->w + 7) / 8;
+    const uint8_t *glyph = &font->bitmap[(ch - font->first) * font->h * stride];
 
-    for (int row = 0; row < GFX_FONT_H; row++) {
-        uint8_t bits = glyph[row];
-        for (int col = 0; col < GFX_FONT_W; col++) {
-            bool on = (bits & (0x80 >> col)) != 0;
+    for (int row = 0; row < font->h; row++) {
+        const uint8_t *rowp = &glyph[row * stride];
+        for (int col = 0; col < font->w; col++) {
+            bool on = (rowp[col >> 3] >> (7 - (col & 7))) & 1;
             gfx_pixel(x + col, y + row, on ^ invert);
         }
     }
 }
 
-void gfx_text(int x, int y, const char *s, bool invert) {
+void gfx_text_f(int x, int y, const char *s, bool invert, const gfx_font_t *font) {
     int cx = x, cy = y;
     while (*s) {
-        if (*s == '\n') { cx = x; cy += GFX_FONT_H; s++; continue; }
-        gfx_char(cx, cy, *s, invert);
-        cx += GFX_FONT_W;
+        if (*s == '\n') { cx = x; cy += font->h; s++; continue; }
+        gfx_char_f(cx, cy, *s, invert, font);
+        cx += font->w;
         s++;
     }
+}
+
+void gfx_char(int x, int y, char c, bool invert) {
+    gfx_char_f(x, y, c, invert, &gfx_font_8x16);
+}
+
+void gfx_text(int x, int y, const char *s, bool invert) {
+    gfx_text_f(x, y, s, invert, &gfx_font_8x16);
 }

@@ -1,6 +1,8 @@
 #include <stdint.h>
 
-const uint8_t font8x16[96 * 16] = {
+#include "gfx.h"
+
+static const uint8_t font_8x16_data[96 * 16] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0x18,0x3C,0x3C,0x3C,0x18,0x18,0x18,0,0x18,0x18,0,0,0,
     0,0,0x66,0x66,0x66,0x24,0,0,0,0,0,0,0,0,0,0,
@@ -102,4 +104,12 @@ const uint8_t font8x16[96 * 16] = {
     0,0,0x70,0x18,0x18,0x18,0x0E,0x18,0x18,0x18,0x18,0x70,0,0,0,0,
     0,0x76,0xDC,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+};
+
+const gfx_font_t gfx_font_8x16 = {
+    .w      = 8,
+    .h      = 16,
+    .first  = 0x20,
+    .last   = 0x7F,
+    .bitmap = font_8x16_data,
 };
