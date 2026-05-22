@@ -15,9 +15,9 @@ extern const gfx_font_t gfx_font_8x16;
 extern const gfx_font_t gfx_font_dep_10x21;
 extern const gfx_font_t gfx_font_dep_13x26;
 extern const gfx_font_t gfx_font_dep_15x31;
-extern const gfx_font_t gfx_font_3270_8x16;
-extern const gfx_font_t gfx_font_3270_11x23;
-extern const gfx_font_t gfx_font_3270_13x27;
+extern const gfx_font_t gfx_font_3270_10x21;
+extern const gfx_font_t gfx_font_3270_12x23;
+extern const gfx_font_t gfx_font_3270_14x27;
 
 #define GFX_FONT_W 8
 #define GFX_FONT_H 16

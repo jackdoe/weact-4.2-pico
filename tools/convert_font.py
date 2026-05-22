@@ -1,22 +1,25 @@
 #!/usr/bin/env python3
 """Convert a TTF/OTF monospace font to a packed 1-bit bitmap C source.
 
-    python3 tools/convert_font.py <font.otf> <size_px> <symbol_name> > src/<file>.c
+    python3 tools/convert_font.py [--bold] <font.otf> <size_px> <symbol_name> > src/<file>.c
 
-Emits a `const gfx_font_t <symbol_name>` plus its glyph bitmap.
-Renders the printable ASCII range 0x20..0x7E with anti-aliasing thresholded to
-mono (>=128 = ink).
+Emits a `const gfx_font_t <symbol_name>` plus its glyph bitmap. Renders the
+printable ASCII range 0x20..0x7E with anti-aliasing thresholded to mono
+(>=128 = ink). With --bold, each glyph is horizontally dilated by 1 px so thin
+strokes read clearly on e-paper.
 """
 
 import sys
 from PIL import Image, ImageDraw, ImageFont
 
 
-def convert(font_path: str, size: int, symbol: str, first: int = 0x20, last: int = 0x7E):
+def convert(font_path: str, size: int, symbol: str, first: int = 0x20, last: int = 0x7E, bold: bool = False):
     font = ImageFont.truetype(font_path, size)
     ascent, descent = font.getmetrics()
     cell_h = ascent + descent
     cell_w = int(round(font.getlength("M")))
+    if bold:
+        cell_w += 1
     stride = (cell_w + 7) // 8
 
     bitmap = bytearray()
@@ -24,14 +27,23 @@ def convert(font_path: str, size: int, symbol: str, first: int = 0x20, last: int
         img = Image.new("L", (cell_w, cell_h), 0)
         draw = ImageDraw.Draw(img)
         draw.text((0, 0), chr(c), font=font, fill=255)
-        for y in range(cell_h):
-            row = bytearray(stride)
-            for x in range(cell_w):
-                if img.getpixel((x, y)) >= 128:
-                    row[x >> 3] |= 0x80 >> (x & 7)
-            bitmap.extend(row)
 
-    count = last - first + 1
+        rows = []
+        for y in range(cell_h):
+            row = [img.getpixel((x, y)) >= 128 for x in range(cell_w)]
+            if bold:
+                for x in range(cell_w - 1, 0, -1):
+                    if row[x - 1]:
+                        row[x] = True
+            rows.append(row)
+
+        for row in rows:
+            packed = bytearray(stride)
+            for x, on in enumerate(row):
+                if on:
+                    packed[x >> 3] |= 0x80 >> (x & 7)
+            bitmap.extend(packed)
+
     out = []
     out.append("#include <stdint.h>")
     out.append('#include "gfx.h"')
@@ -53,6 +65,11 @@ def convert(font_path: str, size: int, symbol: str, first: int = 0x20, last: int
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        sys.exit(f"usage: {sys.argv[0]} <font> <size_px> <symbol>")
-    print(convert(sys.argv[1], int(sys.argv[2]), sys.argv[3]))
+    args = sys.argv[1:]
+    bold = False
+    if args and args[0] == "--bold":
+        bold = True
+        args = args[1:]
+    if len(args) != 3:
+        sys.exit(f"usage: {sys.argv[0]} [--bold] <font> <size_px> <symbol>")
+    print(convert(args[0], int(args[1]), args[2], bold=bold))

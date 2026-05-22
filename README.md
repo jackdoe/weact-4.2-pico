@@ -128,15 +128,21 @@ extern const gfx_font_t gfx_font_8x16;          // built-in default, 1.5 KB
 extern const gfx_font_t gfx_font_dep_10x21;     // Departure Mono @16, ~2 KB
 extern const gfx_font_t gfx_font_dep_13x26;     // Departure Mono @20, ~2.5 KB
 extern const gfx_font_t gfx_font_dep_15x31;     // Departure Mono @24, ~3 KB
-extern const gfx_font_t gfx_font_3270_8x16;     // 3270 Mono @14, ~1.8 KB
-extern const gfx_font_t gfx_font_3270_11x23;    // 3270 Mono @20, ~2.5 KB
-extern const gfx_font_t gfx_font_3270_13x27;    // 3270 Mono @24, ~3 KB
+extern const gfx_font_t gfx_font_3270_10x21;    // 3270 Mono @18, ~2.5 KB
+extern const gfx_font_t gfx_font_3270_12x23;    // 3270 Mono @20 bold, ~2.8 KB
+extern const gfx_font_t gfx_font_3270_14x27;    // 3270 Mono @24 bold, ~3.8 KB
 ```
 
 To add your own, point `tools/convert_font.py` at a TTF or OTF:
 
 ```sh
 python3 tools/convert_font.py myfont.otf 18 gfx_font_my_18 > src/font_my_18.c
+```
+
+For thin-stroked fonts that wash out on e-paper, add `--bold` for a 1-px horizontal dilation. The cell width grows by 1 px and every stroke roughly doubles in weight; the bundled 3270 fonts use this.
+
+```sh
+python3 tools/convert_font.py --bold myfont.ttf 14 gfx_font_my_b > src/font_my_b.c
 ```
 
 Add the generated file to `add_library(weact_epd ...)` in `CMakeLists.txt`, declare `extern const gfx_font_t gfx_font_my_18;` (or in your code directly), and pass it to `gfx_text_f`.

@@ -32,17 +32,17 @@ static void page_3270(void) {
     gfx_text_f(12, 10, "3270 NERD MONO", false, &gfx_font_8x16);
     gfx_line(8, 32, EPD_W - 8, 32, true);
 
-    gfx_text_f(12, 40,  "8x16",  false, &gfx_font_8x16);
-    gfx_text_f(12, 56,  "the quick brown fox jumps",     false, &gfx_font_3270_8x16);
+    gfx_text_f(12, 40,  "10x21", false, &gfx_font_8x16);
+    gfx_text_f(12, 56,  "the quick brown fox",            false, &gfx_font_3270_10x21);
 
-    gfx_text_f(12, 84,  "11x23", false, &gfx_font_8x16);
-    gfx_text_f(12, 100, "mainframe vibes",                false, &gfx_font_3270_11x23);
+    gfx_text_f(12, 84,  "12x23", false, &gfx_font_8x16);
+    gfx_text_f(12, 100, "mainframe vibes",                false, &gfx_font_3270_12x23);
 
-    gfx_text_f(12, 138, "13x27", false, &gfx_font_8x16);
-    gfx_text_f(12, 154, "terminal era",                   false, &gfx_font_3270_13x27);
+    gfx_text_f(12, 138, "14x27", false, &gfx_font_8x16);
+    gfx_text_f(12, 154, "terminal era",                   false, &gfx_font_3270_14x27);
 
-    gfx_text_f(12, 200, "0123456789",                     false, &gfx_font_3270_13x27);
-    gfx_text_f(12, 232, "!@#$%^&*()",                     false, &gfx_font_3270_13x27);
+    gfx_text_f(12, 200, "0123456789",                     false, &gfx_font_3270_14x27);
+    gfx_text_f(12, 232, "!@#$%^&*()",                     false, &gfx_font_3270_14x27);
     epd_refresh_full();
 }
 
