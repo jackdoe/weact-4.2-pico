@@ -112,6 +112,10 @@ Both transfers use one DMA channel streaming straight into the SPI TX FIFO — t
 
 For long-running partial-update sessions (e.g. the Tetris example), schedule an occasional `epd_refresh_full()` — every 30–50 partials is a reasonable rhythm — to clear accumulated waveform drift.
 
+## Credits
+
+Driver written by **Claude Opus 4.7**, tested on real hardware by **[jackdoe](https://github.com/jackdoe)**.
+
 ## License
 
 Public domain / do whatever you want.
