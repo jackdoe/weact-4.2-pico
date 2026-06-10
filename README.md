@@ -23,6 +23,7 @@ examples/
 
 tools/
   convert_font.py     bake any TTF/OTF into a packed-bitmap C source
+  dots_font.py        Claude Dots — original 5x8 dot-matrix face, glyph art in source
 ```
 
 To use the driver in your own project, copy `src/` and edit `epd_config.h` for your pin map.
@@ -124,7 +125,7 @@ void gfx_text_f     (int x, int y, const char *s, bool invert, const gfx_font_t 
 
 ### Fonts
 
-Seven bundled fonts, all monospace, packed as 1-bit bitmaps:
+Twelve bundled fonts, all monospace, packed as 1-bit bitmaps:
 
 ```c
 extern const gfx_font_t gfx_font_8x16;          // built-in default, 1.5 KB
@@ -134,6 +135,11 @@ extern const gfx_font_t gfx_font_dep_15x31;     // Departure Mono @24, ~3 KB
 extern const gfx_font_t gfx_font_3270_10x21;    // 3270 Mono @18, ~2.5 KB
 extern const gfx_font_t gfx_font_3270_12x23;    // 3270 Mono @20 bold, ~2.8 KB
 extern const gfx_font_t gfx_font_3270_14x27;    // 3270 Mono @24 bold, ~3.8 KB
+extern const gfx_font_t gfx_font_dep_20x32;     // Departure Mono @32, ~9 KB — headlines
+extern const gfx_font_t gfx_font_dep_31x48;     // Departure Mono @48, ~18 KB — clock digits
+extern const gfx_font_t gfx_font_3270_18x27;    // 3270 Mono @32 bold, ~8 KB — big terminal
+extern const gfx_font_t gfx_font_dots_18x25;    // Claude Dots, ~7 KB — dot-matrix text
+extern const gfx_font_t gfx_font_dots_30x41;    // Claude Dots XL, ~15 KB — flip-board headlines
 ```
 
 To add your own, point `tools/convert_font.py` at a TTF or OTF:
@@ -141,6 +147,8 @@ To add your own, point `tools/convert_font.py` at a TTF or OTF:
 ```sh
 python3 tools/convert_font.py myfont.otf 18 gfx_font_my_18 > src/font_my_18.c
 ```
+
+The converter crops the cell to the tight common ink bounds across all glyphs, so tall font metrics don't waste flash or line height — `w x h` in the symbol name is the cropped cell.
 
 For thin-stroked fonts that wash out on e-paper, add `--bold` for a 1-px horizontal dilation. The cell width grows by 1 px and every stroke roughly doubles in weight; the bundled 3270 fonts use this.
 

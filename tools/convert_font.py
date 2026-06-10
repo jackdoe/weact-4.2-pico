@@ -5,8 +5,9 @@
 
 Emits a `const gfx_font_t <symbol_name>` plus its glyph bitmap. Renders the
 printable ASCII range 0x20..0x7E with anti-aliasing thresholded to mono
-(>=128 = ink). With --bold, each glyph is horizontally dilated by 1 px so thin
-strokes read clearly on e-paper.
+(>=128 = ink), then crops the cell to the tight common ink bounds across all
+glyphs so no flash is spent on empty rows. With --bold, each glyph is
+horizontally dilated by 1 px so thin strokes read clearly on e-paper.
 """
 
 import sys
@@ -22,7 +23,7 @@ def convert(font_path: str, size: int, symbol: str, first: int = 0x20, last: int
         cell_w += 1
     stride = (cell_w + 7) // 8
 
-    bitmap = bytearray()
+    glyphs = []
     for c in range(first, last + 1):
         img = Image.new("L", (cell_w, cell_h), 0)
         draw = ImageDraw.Draw(img)
@@ -36,8 +37,22 @@ def convert(font_path: str, size: int, symbol: str, first: int = 0x20, last: int
                     if row[x - 1]:
                         row[x] = True
             rows.append(row)
+        glyphs.append(rows)
 
-        for row in rows:
+    top = cell_h
+    bottom = -1
+    for rows in glyphs:
+        for y, row in enumerate(rows):
+            if any(row):
+                top = min(top, y)
+                bottom = max(bottom, y)
+    if bottom < top:
+        top, bottom = 0, cell_h - 1
+    cell_h = bottom - top + 1
+
+    bitmap = bytearray()
+    for rows in glyphs:
+        for row in rows[top : bottom + 1]:
             packed = bytearray(stride)
             for x, on in enumerate(row):
                 if on:

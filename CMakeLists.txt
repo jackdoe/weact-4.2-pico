@@ -16,9 +16,14 @@ add_library(weact_epd STATIC
     src/font_dep_10x21.c
     src/font_dep_13x26.c
     src/font_dep_15x31.c
+    src/font_dep_20x32.c
+    src/font_dep_31x48.c
     src/font_3270_10x21.c
     src/font_3270_12x23.c
     src/font_3270_14x27.c
+    src/font_3270_18x27.c
+    src/font_dots_18x25.c
+    src/font_dots_30x41.c
 )
 
 target_include_directories(weact_epd PUBLIC src)
