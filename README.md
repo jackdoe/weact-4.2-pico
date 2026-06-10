@@ -2,7 +2,7 @@
 
 A clean SSD1683 driver for the **WeAct 4.2" e-paper** (Seekink E042A87, 400 × 300, 1-bit B/W) on the **Raspberry Pi Pico** / RP2040.
 
-Hardware SPI, DMA frame transfer, dual-RAM differential partial refresh, deep sleep, full font + 1bpp graphics — under 1000 lines of code total.
+Hardware SPI, dirty-rectangle differential partial refresh, deep sleep, full font + 1bpp graphics — under 1000 lines of code total.
 
 ![Tetris running on WeAct 4.2" e-paper](screenshot.jpg)
 
@@ -33,12 +33,12 @@ To use the driver in your own project, copy `src/` and edit `epd_config.h` for y
 |-------|-----------|--------------------|
 | VCC   | 3V3       |                    |
 | GND   | GND       |                    |
-| SCK   | GP18      | spi0 SCK           |
-| MOSI  | GP19      | spi0 TX            |
-| CS    | GP20      |                    |
-| DC    | GP21      |                    |
-| RST   | GP26      |                    |
-| BUSY  | GP27      | input, panel drives HIGH while busy |
+| SCK   | GP26      | spi1 SCK           |
+| MOSI  | GP27      | spi1 TX            |
+| CS    | GP21      |                    |
+| DC    | GP22      |                    |
+| RST   | GP28      |                    |
+| BUSY  | GP20      | input, panel drives HIGH while busy |
 
 Edit `src/epd_config.h` to change.
 
@@ -54,7 +54,7 @@ Produces `examples/demo/demo.uf2` and `examples/tetris/tetris.uf2`. Hold BOOTSEL
 
 ## API
 
-The entire public surface — six functions, four macros — is in `epd.h` and `gfx.h`.
+The entire public surface is in `epd.h` and `gfx.h`.
 
 ### Display (`epd.h`)
 
@@ -66,16 +66,17 @@ The entire public surface — six functions, four macros — is in `epd.h` and `
 ```
 
 ```c
-void     epd_init(void);              // SPI + DMA + GPIO + panel init
+void     epd_init(void);              // SPI + GPIO + panel init
 void     epd_sleep(void);             // deep sleep (~3 µA); next refresh auto-wakes
 uint8_t *epd_fb(void);                // direct framebuffer access (15000 bytes)
 void     epd_clear(bool black);       // memset the framebuffer
+void     epd_mark_dirty(int x0, int y0, int x1, int y1); // only needed after raw epd_fb() writes
 
 void     epd_refresh_full(void);      // ~2 s, clears ghosting (blocking)
 void     epd_refresh_partial(void);   // ~300 ms, differential against last frame (blocking)
 
-void     epd_refresh_full_async(void);    // kick off, return when DMA + activate done (~25 ms)
-void     epd_refresh_partial_async(void); // same, ~25 ms before returning
+void     epd_refresh_full_async(void);    // kick off, return when transfer + activate done (~13 ms)
+void     epd_refresh_partial_async(void); // same, only sends the dirty rect; no-op if nothing changed
 bool     epd_busy(void);              // panel still rendering?
 void     epd_wait(void);              // block until panel idle
 
@@ -86,6 +87,8 @@ int      epd_height(void);            // logical height (300 or 400)
 ```
 
 The framebuffer is one contiguous 15000-byte block, 1 bit per pixel, MSB = leftmost pixel, **1 = white, 0 = black** (matches the SSD1683 RAM polarity).
+
+Every `gfx_*` call expands a dirty rectangle around the physical pixels it touched; a partial refresh windows the controller RAM to that rect (x rounded out to 8-px byte boundaries), transfers only it, and skips entirely when nothing changed. If you write to `epd_fb()` directly, tell the driver with `epd_mark_dirty(x0, y0, x1, y1)` (physical pixels, inclusive) or the partial refresh won't see your changes.
 
 A typical update is just three calls:
 
@@ -149,10 +152,10 @@ Add the generated file to `add_library(weact_epd ...)` in `CMakeLists.txt`, decl
 
 ## Refresh strategy
 
-- **Full** (`0x22 = 0xF7`): loads the OTP mode-1 LUT, drives every pixel through the full waveform. ~2 s, no ghosting.
-- **Partial** (`0x22 = 0xFF`): loads the OTP mode-2 LUT and runs the differential update — the driver writes the new frame to BW RAM (`0x24`) **and** the previously-displayed frame to RED RAM (`0x26`). Unchanged pixels hit the LUT's "stay" entries and don't move at all; only the actually-different pixels get driven. ~300 ms, no fading on unchanged regions.
+- **Full** (`0x22 = 0xF7`): loads the OTP mode-1 LUT, drives every pixel through the full waveform. The driver writes the frame to both BW RAM (`0x24`) and RED RAM (`0x26`) — the "base map" — so the controller knows what's on the glass. ~2 s, no ghosting.
+- **Partial** (`0x22 = 0xFF`): loads the OTP mode-2 LUT and runs the differential update — new frame in BW RAM against the displayed frame in RED RAM. Unchanged pixels hit the LUT's "stay" entries and don't move at all; only the actually-different pixels get driven. ~300 ms, no fading on unchanged regions.
 
-Both transfers use one DMA channel streaming straight into the SPI TX FIFO — the 15 KB frame is on the bus in ~12 ms at 20 MHz; the rest of the refresh time is the panel waveform, waited on the `BUSY` pin.
+The previously-displayed frame lives **in the controller**, not on the MCU: after every mode-2 update the SSD1683 copies BW RAM into RED RAM by itself (RAM ping-pong), so a partial refresh only has to send what changed — the gfx layer tracks a dirty rectangle and the driver sets the RAM window to it and streams just those bytes (a worst-case full frame is 15 KB, ~6 ms at 20 MHz). Window granularity is 8 px (one byte) in x, 1 px in y. The waveform itself still scans the whole panel — the window shrinks the transfer, not the ~300 ms refresh — and the rest of the time is waited on the `BUSY` pin.
 
 For long-running partial-update sessions (e.g. the Tetris example), schedule an occasional `epd_refresh_full()` — every 30–50 partials is a reasonable rhythm — to clear accumulated waveform drift.
 
@@ -160,7 +163,7 @@ For long-running partial-update sessions (e.g. the Tetris example), schedule an 
 
 The panel takes ~300 ms to actually draw a partial frame and ~2 s for a full one — most of which is the controller running the waveform with the SPI bus idle. The async API splits this:
 
-1. `epd_refresh_*_async()` waits for any prior refresh to finish, streams the framebuffer over DMA, fires `MASTER_ACTIVATE`, and returns (~25 ms total — almost all of it the DMA transfer).
+1. `epd_refresh_*_async()` waits for any prior refresh to finish, streams the dirty rect, fires `MASTER_ACTIVATE`, and returns (a few ms — almost all of it the SPI transfer).
 2. The panel keeps drawing in the background while your main loop runs.
 3. Call `epd_busy()` before the next refresh; only kick off a new one when it returns false.
 
@@ -178,7 +181,7 @@ while (1) {
 }
 ```
 
-Multiple state changes during a refresh coalesce — the next render captures the latest state, not every intermediate one. Input latency drops from one full refresh (~300 ms) to one DMA transfer (~25 ms).
+Multiple state changes during a refresh coalesce — the next render captures the latest state, not every intermediate one. Input latency drops from one full refresh (~300 ms) to one dirty-rect transfer (a few ms).
 
 ## Credits
 

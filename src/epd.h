@@ -14,6 +14,7 @@ void epd_sleep(void);
 uint8_t *epd_fb(void);
 
 void epd_clear(bool black);
+void epd_mark_dirty(int x0, int y0, int x1, int y1);
 
 void epd_refresh_full(void);
 void epd_refresh_partial(void);

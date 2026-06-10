@@ -3,7 +3,6 @@
 
 #include "pico/stdlib.h"
 #include "hardware/spi.h"
-#include "hardware/dma.h"
 #include "hardware/gpio.h"
 
 #include <string.h>
@@ -33,11 +32,12 @@
 #define UPD_PARTIAL          0xFF
 
 static uint8_t fb[EPD_BYTES];
-static uint8_t prev_fb[EPD_BYTES];
-static const uint8_t ZERO = 0x00;
-static int dma_ch;
 static bool asleep = false;
 static int rot = 0;
+static int dirty_x0 = EPD_W;
+static int dirty_y0 = EPD_H;
+static int dirty_x1 = -1;
+static int dirty_y1 = -1;
 
 static inline void cs_lo(void)   { gpio_put(EPD_PIN_CS, 0); }
 static inline void cs_hi(void)   { gpio_put(EPD_PIN_CS, 1); }
@@ -65,20 +65,6 @@ static void send_data(const uint8_t *d, size_t n) {
 
 static void send_data1(uint8_t v) {
     send_data(&v, 1);
-}
-
-static void dma_xfer(const void *src, size_t n, bool incr) {
-    dc_data();
-    cs_lo();
-    dma_channel_config cfg = dma_channel_get_default_config(dma_ch);
-    channel_config_set_transfer_data_size(&cfg, DMA_SIZE_8);
-    channel_config_set_dreq(&cfg, spi_get_dreq(EPD_SPI, true));
-    channel_config_set_read_increment(&cfg, incr);
-    channel_config_set_write_increment(&cfg, false);
-    dma_channel_configure(dma_ch, &cfg, &spi_get_hw(EPD_SPI)->dr, src, n, true);
-    dma_channel_wait_for_finish_blocking(dma_ch);
-    while (spi_is_busy(EPD_SPI)) tight_loop_contents();
-    cs_hi();
 }
 
 static void hw_reset(void) {
@@ -136,11 +122,27 @@ static void panel_init(void) {
     asleep = false;
 }
 
-static void wake_if_needed(void) {
-    if (asleep) panel_init();
+static void send_fb(uint8_t reg, int xb0, int y0, int xb1, int y1) {
+    set_window((uint16_t)(xb0 << 3), (uint16_t)y0, (uint16_t)((xb1 << 3) | 7), (uint16_t)y1);
+    set_cursor((uint16_t)(xb0 << 3), (uint16_t)y0);
+    send_cmd(reg);
+    dc_data();
+    cs_lo();
+    for (int y = y0; y <= y1; y++)
+        spi_write_blocking(EPD_SPI, fb + y * EPD_PITCH + xb0, (size_t)(xb1 - xb0 + 1));
+    cs_hi();
 }
 
-static void trigger_async(uint8_t mode) {
+static void ready(void) {
+    if (asleep) panel_init();
+    else wait_busy();
+}
+
+static void trigger(uint8_t mode) {
+    dirty_x0 = EPD_W;
+    dirty_y0 = EPD_H;
+    dirty_x1 = -1;
+    dirty_y1 = -1;
     send_cmd(CMD_DISP_UPDATE_2);
     send_data1(mode);
     send_cmd(CMD_MASTER_ACTIVATE);
@@ -157,15 +159,16 @@ void epd_init(void) {
     gpio_init(EPD_PIN_RST);  gpio_set_dir(EPD_PIN_RST, GPIO_OUT);  gpio_put(EPD_PIN_RST, 1);
     gpio_init(EPD_PIN_BUSY); gpio_set_dir(EPD_PIN_BUSY, GPIO_IN);
 
-    dma_ch = dma_claim_unused_channel(true);
-
     memset(fb, 0xFF, EPD_BYTES);
-    memset(prev_fb, 0xFF, EPD_BYTES);
 
     panel_init();
+    send_fb(CMD_WRITE_BW, 0, 0, EPD_PITCH - 1, EPD_H - 1);
+    send_fb(CMD_WRITE_RED, 0, 0, EPD_PITCH - 1, EPD_H - 1);
 }
 
 void epd_sleep(void) {
+    if (asleep) return;
+    wait_busy();
     send_cmd(CMD_DEEP_SLEEP);
     send_data1(0x01);
     asleep = true;
@@ -175,48 +178,41 @@ uint8_t *epd_fb(void) { return fb; }
 
 void epd_clear(bool black) {
     memset(fb, black ? 0x00 : 0xFF, EPD_BYTES);
+    epd_mark_dirty(0, 0, EPD_W - 1, EPD_H - 1);
+}
+
+void epd_mark_dirty(int x0, int y0, int x1, int y1) {
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > EPD_W - 1) x1 = EPD_W - 1;
+    if (y1 > EPD_H - 1) y1 = EPD_H - 1;
+    if (x0 > x1 || y0 > y1) return;
+    if (x0 < dirty_x0) dirty_x0 = x0;
+    if (y0 < dirty_y0) dirty_y0 = y0;
+    if (x1 > dirty_x1) dirty_x1 = x1;
+    if (y1 > dirty_y1) dirty_y1 = y1;
 }
 
 bool epd_busy(void) {
-    return gpio_get(EPD_PIN_BUSY);
+    return !asleep && gpio_get(EPD_PIN_BUSY);
 }
 
 void epd_wait(void) {
-    wait_busy();
+    if (!asleep) wait_busy();
 }
 
 void epd_refresh_full_async(void) {
-    wait_busy();
-    wake_if_needed();
-
-    set_cursor(0, 0);
-    send_cmd(CMD_WRITE_BW);
-    dma_xfer(fb, EPD_BYTES, true);
-
-    set_cursor(0, 0);
-    send_cmd(CMD_WRITE_RED);
-    dma_xfer(&ZERO, EPD_BYTES, false);
-
-    memcpy(prev_fb, fb, EPD_BYTES);
-
-    trigger_async(UPD_FULL);
+    ready();
+    send_fb(CMD_WRITE_BW, 0, 0, EPD_PITCH - 1, EPD_H - 1);
+    send_fb(CMD_WRITE_RED, 0, 0, EPD_PITCH - 1, EPD_H - 1);
+    trigger(UPD_FULL);
 }
 
 void epd_refresh_partial_async(void) {
-    wait_busy();
-    wake_if_needed();
-
-    set_cursor(0, 0);
-    send_cmd(CMD_WRITE_BW);
-    dma_xfer(fb, EPD_BYTES, true);
-
-    set_cursor(0, 0);
-    send_cmd(CMD_WRITE_RED);
-    dma_xfer(prev_fb, EPD_BYTES, true);
-
-    memcpy(prev_fb, fb, EPD_BYTES);
-
-    trigger_async(UPD_PARTIAL);
+    if (dirty_y1 < dirty_y0) return;
+    ready();
+    send_fb(CMD_WRITE_BW, dirty_x0 >> 3, dirty_y0, dirty_x1 >> 3, dirty_y1);
+    trigger(UPD_PARTIAL);
 }
 
 void epd_refresh_full(void) {

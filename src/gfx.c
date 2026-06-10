@@ -20,6 +20,7 @@ static inline void phys_pixel(int px, int py, bool black) {
     uint8_t mask = 0x80 >> (px & 7);
     if (black) *p &= (uint8_t)~mask;
     else       *p |= mask;
+    epd_mark_dirty(px, py, px, py);
 }
 
 static void phys_hline(int x, int y, int w, bool black) {
@@ -33,6 +34,8 @@ static void phys_hline(int x, int y, int w, bool black) {
     int b0 = x >> 3, b1 = x1 >> 3;
     uint8_t lm = (uint8_t)(0xFF >> (x & 7));
     uint8_t rm = (uint8_t)(0xFF << (7 - (x1 & 7)));
+
+    epd_mark_dirty(x, y, x1, y);
 
     if (b0 == b1) {
         uint8_t m = lm & rm;

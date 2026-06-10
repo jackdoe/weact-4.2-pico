@@ -36,6 +36,7 @@ static void splash(void) {
     snprintf(buf, sizeof(buf), "%llu ms", dt / 1000);
     gfx_fill_rect(EPD_W - 120, EPD_H - 26, 100, GFX_FONT_H, false);
     gfx_text     (EPD_W - 120, EPD_H - 26, buf, false);
+    epd_refresh_partial();
 }
 
 static void partial_demo(int steps) {

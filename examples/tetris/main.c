@@ -171,6 +171,13 @@ static void spawn(void) {
     piece_y = 0;
 }
 
+static void land(void) {
+    lock_piece();
+    update_score(clear_lines());
+    spawn();
+    game_over = collides(piece_type, piece_rot, piece_x, piece_y);
+}
+
 static void reset_game(void) {
     memset(board, 0, sizeof(board));
     score = 0;
@@ -314,11 +321,7 @@ static void game_loop(void) {
                 if (e & (1 << KEY_ROT))   dirty |= try_move(0, 0, 1);
                 if (e & (1 << KEY_DROP)) {
                     hard_drop();
-                    lock_piece();
-                    int n = clear_lines();
-                    update_score(n);
-                    spawn();
-                    if (collides(piece_type, piece_rot, piece_x, piece_y)) game_over = true;
+                    land();
                     last_tick = time_us_64();
                     dirty = true;
                 }
@@ -328,13 +331,7 @@ static void game_loop(void) {
         uint64_t now = time_us_64();
         if (!paused && !game_over && now - last_tick >= (uint64_t)gravity_ms * 1000) {
             last_tick = now;
-            if (!try_move(0, 1, 0)) {
-                lock_piece();
-                int n = clear_lines();
-                update_score(n);
-                spawn();
-                if (collides(piece_type, piece_rot, piece_x, piece_y)) game_over = true;
-            }
+            if (!try_move(0, 1, 0)) land();
             dirty = true;
         }
 

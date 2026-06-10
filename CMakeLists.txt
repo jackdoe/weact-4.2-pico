@@ -26,7 +26,6 @@ target_include_directories(weact_epd PUBLIC src)
 target_link_libraries(weact_epd
     pico_stdlib
     hardware_spi
-    hardware_dma
     hardware_gpio
 )
 
